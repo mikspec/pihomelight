@@ -16,15 +16,16 @@ func GetRobot(pirPin, relayPin string, delay int) *gobot.Robot {
 	relay := gpio.NewRelayDriver(r, relayPin)
 
 	work := func() {
+
 		sensor.On(gpio.MotionDetected, func(data interface{}) {
 			fmt.Println(gpio.MotionDetected)
 			// Light on
-			relay.On()
+			relay.Off()
 			timer := time.NewTimer(time.Duration(delay) * time.Second)
 			go func() {
 				<-timer.C
 				// Light off
-				relay.Off()
+				relay.On()
 			}()
 		})
 	}

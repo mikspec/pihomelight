@@ -1,7 +1,7 @@
 package main
 
 // PIRPIN - gpio pin for PIR sensor
-const PIRPIN = "11"
+const PIRPIN = "13"
 
 // RELAYPIN - gpio pin for relay
 const RELAYPIN = "3"
