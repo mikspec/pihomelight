@@ -1,5 +1,7 @@
 package main
 
+import "flag"
+
 // PIRPIN - gpio pin for PIR sensor
 const PIRPIN = "13"
 
@@ -7,7 +9,16 @@ const PIRPIN = "13"
 const RELAYPIN = "3"
 
 func main() {
+
+	duration := flag.Int(
+		"duration",
+		120,
+		"Light on duration",
+	)
+
+	flag.Parse()
+
 	// Start robot
-	robot := GetRobot(PIRPIN, RELAYPIN, 60)
+	robot := GetRobot(PIRPIN, RELAYPIN, *duration)
 	robot.Start()
 }
