@@ -35,11 +35,13 @@ func GetRobot(pirPin, relayPin string, delay int) *gobot.Robot {
 				<-timer.C
 				// Protect counter
 				mutex.Lock()
-				cnt--
-				// Light off only for last call
-				if cnt == 0 {
-					// Light off - high state switch off the relay
-					relay.On()
+				if cnt > 0 {
+					cnt--
+					// Light off only for last call
+					if cnt == 0 {
+						// Light off - high state switch off the relay
+						relay.On()
+					}
 				}
 				mutex.Unlock()
 			}()
