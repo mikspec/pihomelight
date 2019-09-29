@@ -16,9 +16,21 @@ func main() {
 		"Light on duration",
 	)
 
+	longitude := flag.Float64(
+		"longitude",
+		17.0,
+		"Longitude of property",
+	)
+
+	latitude := flag.Float64(
+		"latitude",
+		51.0,
+		"Latitude of property",
+	)
+
 	flag.Parse()
 
 	// Start robot
-	robot := GetRobot(PIRPIN, RELAYPIN, *duration)
+	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude)
 	robot.Start()
 }
