@@ -31,12 +31,18 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 		UtcOffset: float64(offset) / 3600,
 		Date:      time.Date(year, month, day, 0, 0, 0, 0, time.UTC),
 	  }
-  
+	sunrise, sunset, err := p.GetSunriseSunset()
+	fmt.Println("Sunrise:", sunrise.Format("15:04:05"), sunrise) // Sunrise: 06:11:44
+	fmt.Println("Sunset:", sunset.Format("15:04:05"), sunset) // Sunset: 18:14:27
+	if err != nil {
+		return nil
+	}
+
 	work := func() {
 
 		sensor.On(gpio.MotionDetected, func(data interface{}) {
 			fmt.Println(gpio.MotionDetected)
-
+	
 			t = time.Now()
 			year, month, day = t.Date()
 			today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
@@ -44,9 +50,9 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 				p.Date = today
 				_, offset = t.Zone()
 				p.UtcOffset = float64(offset) / 3600
+				sunrise, sunset, err = p.GetSunriseSunset()
 			}
 			
-			sunrise, sunset, err :=  p.GetSunriseSunset()
 			if err != nil || ((sunrise.Hour() * 60 + sunrise.Minute()) < (t.Hour() * 60 + t.Minute()) && (sunset.Hour() * 60 + sunset.Minute()) > (t.Hour() * 60 + t.Minute())) {
 				return 
 			}
