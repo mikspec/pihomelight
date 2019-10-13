@@ -13,12 +13,16 @@ import (
 
 
 // GetRobot returns configured raspi robot - PIR sensor + relay
-func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude float64) *gobot.Robot {
+func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude float64, lightOnState bool) *gobot.Robot {
 	r := raspi.NewAdaptor()
 	sensor := gpio.NewPIRMotionDriver(r, pirPin)
 	relay := gpio.NewRelayDriver(r, relayPin)
-	// Switch off the light 
-	relay.On()
+	// Switch off the light - lightOnState keeps logic value where light is on
+	if lightOnState {
+		relay.Off()
+	} else {
+		relay.On()
+	}
 	mutex := sync.Mutex{}
 	cnt := 0
 	// Set sun clock 
@@ -59,8 +63,12 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 
 			// Protect counter
 			mutex.Lock()
-			// Light on - low state switch on the relay
-			relay.Off()
+			// Light on - lightOnState keeps logic value where light is on
+			if lightOnState {
+				relay.On()
+			} else {
+				relay.Off()
+			}
 			cnt++
 			timer := time.NewTimer(time.Duration(delay) * time.Second)
 			mutex.Unlock()
@@ -73,8 +81,12 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 					cnt--
 					// Light off only for last call
 					if cnt == 0 {
-						// Light off - high state switch off the relay
-						relay.On()
+						// Light off
+						if lightOnState {
+							relay.Off()
+						} else {
+							relay.On()
+						}
 					}
 				}
 				mutex.Unlock()

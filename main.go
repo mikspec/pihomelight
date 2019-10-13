@@ -28,9 +28,15 @@ func main() {
 		"Latitude of property",
 	)
 
+	lightOnState := flag.Bool(
+		"lightOnState",
+		false,
+		"Light on state",
+	)
+
 	flag.Parse()
 
 	// Start robot
-	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude)
+	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude, *lightOnState)
 	robot.Start()
 }
