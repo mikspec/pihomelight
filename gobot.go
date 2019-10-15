@@ -1,23 +1,35 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"time"
+	"log"
+	"net/http"
 
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/drivers/gpio"
 	"gobot.io/x/gobot/platforms/raspi"
+	"gobot.io/x/gobot/api"
 	"github.com/kelvins/sunrisesunset"
 )
 
 
-// GetRobot returns configured raspi robot - PIR sensor + relay
-func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude float64, lightOnState bool) *gobot.Robot {
+// GetRobot returns configured raspi robot - PIR sensor + relay + API command
+func GetRobot(	
+		pirPin, 
+		relayPin string, 
+		delay int, 
+		longitude float64, 
+		latitude float64, 
+		lightOnState bool, 
+		port string,
+		pirSensorOn bool,
+		remoteRelayIP string,		  
+		) *gobot.Master {
 	r := raspi.NewAdaptor()
 	sensor := gpio.NewPIRMotionDriver(r, pirPin)
 	relay := gpio.NewRelayDriver(r, relayPin)
-	// Switch off the light - lightOnState keeps logic value where light is on
+	// Switch off the light - lightOnState keeps logic value where light is on - some relays are activated on high or low signal state
 	if lightOnState {
 		relay.Off()
 	} else {
@@ -36,62 +48,76 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 		Date:      time.Date(year, month, day, 0, 0, 0, 0, time.UTC),
 	  }
 	sunrise, sunset, err := p.GetSunriseSunset()
-	fmt.Println("Sunrise:", sunrise.Format("15:04:05"), sunrise) // Sunrise: 06:11:44
-	fmt.Println("Sunset:", sunset.Format("15:04:05"), sunset) // Sunset: 18:14:27
+	log.Println("Sunrise:", sunrise.Format("15:04:05"), sunrise) // Sunrise: 06:11:44
+	log.Println("Sunset:", sunset.Format("15:04:05"), sunset) // Sunset: 18:14:27
 	if err != nil {
 		return nil
 	}
 
-	work := func() {
+	// Function called by API command and pir sensor, checks wheather there is dark outside
+	lightOn := func() {
+		
+		t = time.Now()
+		year, month, day = t.Date()
+		today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+		if !p.Date.Equal(today) {
+			p.Date = today
+			_, offset = t.Zone()
+			p.UtcOffset = float64(offset) / 3600
+			sunrise, sunset, err = p.GetSunriseSunset()
+		}
+		
+		if err != nil || ((sunrise.Hour() * 60 + sunrise.Minute()) < (t.Hour() * 60 + t.Minute()) && (sunset.Hour() * 60 + sunset.Minute()) > (t.Hour() * 60 + t.Minute())) {
+			return 
+		}		
+		// Protect counter
+		mutex.Lock()
+		// Light on - lightOnState keeps logic value where light is on
+		if lightOnState {
+			relay.On()
+		} else {
+			relay.Off()
+		}
+		cnt++
+		timer := time.NewTimer(time.Duration(delay) * time.Second)
+		mutex.Unlock()
 
-		sensor.On(gpio.MotionDetected, func(data interface{}) {
-			fmt.Println(gpio.MotionDetected)
-	
-			t = time.Now()
-			year, month, day = t.Date()
-			today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-			if !p.Date.Equal(today) {
-				p.Date = today
-				_, offset = t.Zone()
-				p.UtcOffset = float64(offset) / 3600
-				sunrise, sunset, err = p.GetSunriseSunset()
-			}
-			
-			if err != nil || ((sunrise.Hour() * 60 + sunrise.Minute()) < (t.Hour() * 60 + t.Minute()) && (sunset.Hour() * 60 + sunset.Minute()) > (t.Hour() * 60 + t.Minute())) {
-				return 
-			}
-
+		// Light off after configured period of time
+		go func() {
+			<-timer.C
 			// Protect counter
 			mutex.Lock()
-			// Light on - lightOnState keeps logic value where light is on
-			if lightOnState {
-				relay.On()
-			} else {
-				relay.Off()
-			}
-			cnt++
-			timer := time.NewTimer(time.Duration(delay) * time.Second)
-			mutex.Unlock()
-
-			go func() {
-				<-timer.C
-				// Protect counter
-				mutex.Lock()
-				if cnt > 0 {
-					cnt--
-					// Light off only for last call
-					if cnt == 0 {
-						// Light off
-						if lightOnState {
-							relay.Off()
-						} else {
-							relay.On()
-						}
+			if cnt > 0 {
+				cnt--
+				// Light off only for last call
+				if cnt == 0 {
+					// Light off
+					if lightOnState {
+						relay.Off()
+					} else {
+						relay.On()
 					}
 				}
-				mutex.Unlock()
-			}()
-		})
+			}
+			mutex.Unlock()
+		}()
+	}
+
+	work := func() {
+
+		if pirSensorOn {
+			sensor.On(gpio.MotionDetected, func(data interface{}) {
+				log.Println(gpio.MotionDetected)
+				lightOn()
+				if remoteRelayIP != "" {
+					_, err := http.Get("http://" + remoteRelayIP + ":" + port + "/api/robots/pilight/commands/light_on")
+					if err != nil {
+						log.Println(err)
+					}
+
+				}
+			})
+		}
 	}
 
 	robot := gobot.NewRobot("pilight",
@@ -99,6 +125,17 @@ func GetRobot(pirPin, relayPin string, delay int, longitude float64, latitude fl
 		[]gobot.Device{sensor, relay},
 		work,
 	)
-
-	return robot
+	
+	robot.AddCommand("light_on",
+		func(params map[string]interface{}) interface{} {
+			lightOn()
+			return "Light On"
+    })
+	
+	mbot := gobot.NewMaster()
+	mbot.AddRobot(robot)
+	server := api.NewAPI(mbot)
+	server.Port = port
+	server.Start()
+	return mbot
 }

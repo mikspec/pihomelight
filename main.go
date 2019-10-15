@@ -34,9 +34,27 @@ func main() {
 		"Light on state",
 	)
 
+	port := flag.String(
+		"port",
+		"3000",
+		"API server port",
+	)
+
+	pirSensorOn := flag.Bool(
+		"pirSensorOn",
+		true,
+		"Pir sensor on",
+	)
+
+	remoteRelayIP := flag.String(
+		"remoteRelay",
+		"",
+		"Remote relay IP",
+	)
+
 	flag.Parse()
 
 	// Start robot
-	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude, *lightOnState)
+	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude, *lightOnState, *port, *pirSensorOn, *remoteRelayIP)
 	robot.Start()
 }
