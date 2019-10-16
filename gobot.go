@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"fmt"
 	"time"
 	"log"
 	"net/http"
@@ -55,7 +56,7 @@ func GetRobot(
 	}
 
 	// Function called by API command and pir sensor, checks wheather there is dark outside
-	lightOn := func() {
+	lightOn := func(duration int) {
 		
 		t = time.Now()
 		year, month, day = t.Date()
@@ -79,7 +80,7 @@ func GetRobot(
 			relay.Off()
 		}
 		cnt++
-		timer := time.NewTimer(time.Duration(delay) * time.Second)
+		timer := time.NewTimer(time.Duration(duration) * time.Second)
 		mutex.Unlock()
 
 		// Light off after configured period of time
@@ -108,7 +109,7 @@ func GetRobot(
 		if pirSensorOn {
 			sensor.On(gpio.MotionDetected, func(data interface{}) {
 				log.Println(gpio.MotionDetected)
-				lightOn()
+				lightOn(delay)
 				if remoteRelayIP != "" {
 					_, err := http.Get("http://" + remoteRelayIP + ":" + port + "/api/robots/pilight/commands/light_on")
 					if err != nil {
@@ -128,8 +129,14 @@ func GetRobot(
 	
 	robot.AddCommand("light_on",
 		func(params map[string]interface{}) interface{} {
-			lightOn()
-			return "Light On"
+			duration := delay
+			if paramDuration, ok := params["duration"]; ok {
+				if val, ok := paramDuration.(float64); ok{
+					duration = int(val)
+				}
+			}
+			lightOn(duration)
+			return fmt.Sprintf("Light On - %d", duration)
     })
 	
 	mbot := gobot.NewMaster()
