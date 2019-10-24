@@ -1,36 +1,35 @@
 package main
 
 import (
-	"sync"
 	"fmt"
-	"time"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
+	"github.com/kelvins/sunrisesunset"
 	"gobot.io/x/gobot"
+	"gobot.io/x/gobot/api"
 	"gobot.io/x/gobot/drivers/gpio"
 	"gobot.io/x/gobot/platforms/raspi"
-	"gobot.io/x/gobot/api"
-	"github.com/kelvins/sunrisesunset"
 )
 
-
 // GetRobot returns configured raspi robot - PIR sensor + relay + API command
-func GetRobot(	
-		pirPin, 
-		relayPin string, 
-		delay int, 
-		longitude float64, 
-		latitude float64, 
-		lightOnState bool, 
-		port string,
-		pirSensorOn bool,
-		remoteRelayIP string,		  
-		) *gobot.Master {
+func GetRobot(
+	pirPin,
+	relayPin string,
+	delay int,
+	longitude float64,
+	latitude float64,
+	lightOnState bool,
+	port string,
+	pirSensorOn bool,
+	remoteRelayIP string,
+) *gobot.Master {
 	r := raspi.NewAdaptor()
 	sensor := gpio.NewPIRMotionDriver(r, pirPin)
 	relay := gpio.NewRelayDriver(r, relayPin)
-	// Switch off the light - lightOnState keeps logic value where light is on - some relays are activated on high or low signal state
+	// Switch off the light - lightOnState keeps logic value when light is on - some relays are activated on high or low signal state
 	if lightOnState {
 		relay.Off()
 	} else {
@@ -38,7 +37,7 @@ func GetRobot(
 	}
 	mutex := sync.Mutex{}
 	cnt := 0
-	// Set sun clock 
+	// Set sun clock
 	t := time.Now()
 	_, offset := t.Zone()
 	year, month, day := t.Date()
@@ -47,17 +46,17 @@ func GetRobot(
 		Longitude: longitude,
 		UtcOffset: float64(offset) / 3600,
 		Date:      time.Date(year, month, day, 0, 0, 0, 0, time.UTC),
-	  }
+	}
 	sunrise, sunset, err := p.GetSunriseSunset()
 	log.Println("Sunrise:", sunrise.Format("15:04:05"), sunrise) // Sunrise: 06:11:44
-	log.Println("Sunset:", sunset.Format("15:04:05"), sunset) // Sunset: 18:14:27
+	log.Println("Sunset:", sunset.Format("15:04:05"), sunset)    // Sunset: 18:14:27
 	if err != nil {
 		return nil
 	}
 
-	// Function called by API command and pir sensor, checks wheather there is dark outside
+	// Function called by API command and pir sensor, checks wheather there is a dark outside
 	lightOn := func(duration int) {
-		
+
 		t = time.Now()
 		year, month, day = t.Date()
 		today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
@@ -67,13 +66,24 @@ func GetRobot(
 			p.UtcOffset = float64(offset) / 3600
 			sunrise, sunset, err = p.GetSunriseSunset()
 		}
-		
-		if err != nil || ((sunrise.Hour() * 60 + sunrise.Minute()) < (t.Hour() * 60 + t.Minute()) && (sunset.Hour() * 60 + sunset.Minute()) > (t.Hour() * 60 + t.Minute())) {
-			return 
-		}		
+		startTime := t.Hour()*60 + t.Minute()
+		endTime := startTime + duration/60
+		sunriseTime := sunrise.Hour()*60 + sunrise.Minute()
+		sunsetTime := sunset.Hour()*60 + sunset.Minute()
+
+		// Light on request out of the darkness window
+		if err != nil || ((sunriseTime < startTime) && (sunsetTime > endTime)) {
+			return
+		}
+
+		// Light Off time adjustment for sunrise - endtime after sunrise
+		if endTime > sunriseTime {
+			duration = (sunriseTime - startTime) * 60
+		}
+
 		// Protect counter
 		mutex.Lock()
-		// Light on - lightOnState keeps logic value where light is on
+		// Light on - lightOnState keeps logic value when light is on
 		if lightOnState {
 			relay.On()
 		} else {
@@ -126,19 +136,19 @@ func GetRobot(
 		[]gobot.Device{sensor, relay},
 		work,
 	)
-	
+
 	robot.AddCommand("light_on",
 		func(params map[string]interface{}) interface{} {
 			duration := delay
 			if paramDuration, ok := params["duration"]; ok {
-				if val, ok := paramDuration.(float64); ok{
+				if val, ok := paramDuration.(float64); ok {
 					duration = int(val)
 				}
 			}
 			lightOn(duration)
 			return fmt.Sprintf("Light On - %d", duration)
-    })
-	
+		})
+
 	mbot := gobot.NewMaster()
 	mbot.AddRobot(robot)
 	server := api.NewAPI(mbot)
