@@ -54,33 +54,8 @@ func GetRobot(
 		return nil
 	}
 
-	// Function called by API command and pir sensor, checks wheather there is a dark outside
-	lightOn := func(duration int) {
-
-		t = time.Now()
-		year, month, day = t.Date()
-		today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-		if !p.Date.Equal(today) {
-			p.Date = today
-			_, offset = t.Zone()
-			p.UtcOffset = float64(offset) / 3600
-			sunrise, sunset, err = p.GetSunriseSunset()
-		}
-		startTime := t.Hour()*60 + t.Minute()
-		endTime := startTime + duration/60
-		sunriseTime := sunrise.Hour()*60 + sunrise.Minute()
-		sunsetTime := sunset.Hour()*60 + sunset.Minute()
-
-		// Light on request out of the darkness window
-		if err != nil || ((sunriseTime < startTime) && (sunsetTime > endTime)) {
-			return
-		}
-
-		// Light Off time adjustment for sunrise - endtime after sunrise
-		if endTime > sunriseTime {
-			duration = (sunriseTime - startTime) * 60
-		}
-
+	// Light on and off function with mutex protection
+	lightSwitch := func(lightOnDuration time.Duration) {
 		// Protect counter
 		mutex.Lock()
 		// Light on - lightOnState keeps logic value when light is on
@@ -90,7 +65,7 @@ func GetRobot(
 			relay.Off()
 		}
 		cnt++
-		timer := time.NewTimer(time.Duration(duration) * time.Second)
+		timer := time.NewTimer(lightOnDuration)
 		mutex.Unlock()
 
 		// Light off after configured period of time
@@ -112,6 +87,47 @@ func GetRobot(
 			}
 			mutex.Unlock()
 		}()
+	}
+
+	// Function called by API command and pir sensor, checks wheather there is a dark outside
+	lightOn := func(duration int) {
+
+		t = time.Now()
+		year, month, day = t.Date()
+		today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+		if !p.Date.Equal(today) {
+			p.Date = today
+			_, offset = t.Zone()
+			p.UtcOffset = float64(offset) / 3600
+			sunrise, sunset, err = p.GetSunriseSunset()
+		}
+		startTime := t.Hour()*60 + t.Minute()
+		endTime := startTime + duration/60
+		sunriseTime := sunrise.Hour()*60 + sunrise.Minute()
+		sunsetTime := sunset.Hour()*60 + sunset.Minute()
+
+		// Light On request out of the darkness window
+		if err != nil || ((sunriseTime <= startTime) && (sunsetTime >= endTime)) {
+			return
+		}
+
+		// Light Off time adjustment for sunrise - endtime after sunrise
+		if (startTime < sunriseTime) && (sunriseTime < endTime) && (startTime != endTime) {
+			duration = (sunriseTime - startTime) * 60
+		}
+
+		// Light On time adjustment for sunset - start time before sunset
+		if (startTime < sunsetTime) && (sunsetTime < endTime) && (startTime != endTime) {
+			sunsetTimer := time.NewTimer(time.Duration(sunsetTime-startTime) * time.Minute)
+
+			go func() {
+				<-sunsetTimer.C
+				lightSwitch(time.Duration(endTime-sunsetTime) * time.Minute)
+			}()
+			return
+		}
+
+		lightSwitch(time.Duration(duration) * time.Second)
 	}
 
 	work := func() {
