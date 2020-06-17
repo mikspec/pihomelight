@@ -28,12 +28,14 @@ func GetRobot(
 ) *gobot.Master {
 	r := raspi.NewAdaptor()
 	sensor := gpio.NewPIRMotionDriver(r, pirPin)
-	relay := gpio.NewRelayDriver(r, relayPin)
+	relay := gpio.NewDirectPinDriver(r, relayPin)
 	// Switch off the light - lightOnState keeps logic value when light is on - some relays are activated on high or low signal state
 	if lightOnState {
 		relay.Off()
 	} else {
 		relay.On()
+		// Workaroud - relay was unstable due to missing pull up resistor, added pull up resistor by pin mode in set
+		relay.DigitalRead()
 	}
 	mutex := sync.Mutex{}
 	cnt := 0
@@ -61,6 +63,7 @@ func GetRobot(
 		// Light on - lightOnState keeps logic value when light is on
 		if lightOnState {
 			relay.On()
+			relay.DigitalRead()
 		} else {
 			relay.Off()
 		}
@@ -82,6 +85,7 @@ func GetRobot(
 						relay.Off()
 					} else {
 						relay.On()
+						relay.DigitalRead()
 					}
 				}
 			}
