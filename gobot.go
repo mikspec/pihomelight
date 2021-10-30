@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -25,18 +27,14 @@ func GetRobot(
 	port string,
 	pirSensorOn bool,
 	remoteRelayIP string,
+	halloweenDivider int,
+	halloweenLoop int,
 ) *gobot.Master {
 	r := raspi.NewAdaptor()
 	sensor := gpio.NewPIRMotionDriver(r, pirPin)
-	relay := gpio.NewDirectPinDriver(r, relayPin)
-	// Switch off the light - lightOnState keeps logic value when light is on - some relays are activated on high or low signal state
-	if lightOnState {
-		relay.Off()
-	} else {
-		relay.On()
-		// Workaroud - relay was unstable due to missing pull up resistor, added pull up resistor by pin mode in set
-		relay.DigitalRead()
-	}
+	relay := gpio.NewRelayDriver(r, relayPin)
+	relay.Inverted = !lightOnState
+	relay.Off()
 	mutex := sync.Mutex{}
 	cnt := 0
 	// Set sun clock
@@ -60,13 +58,7 @@ func GetRobot(
 	lightSwitch := func(lightOnDuration time.Duration) {
 		// Protect counter
 		mutex.Lock()
-		// Light on - lightOnState keeps logic value when light is on
-		if lightOnState {
-			relay.On()
-			relay.DigitalRead()
-		} else {
-			relay.Off()
-		}
+		relay.On()
 		cnt++
 		timer := time.NewTimer(lightOnDuration)
 		mutex.Unlock()
@@ -80,13 +72,7 @@ func GetRobot(
 				cnt--
 				// Light off only for last call
 				if cnt == 0 {
-					// Light off
-					if lightOnState {
-						relay.Off()
-					} else {
-						relay.On()
-						relay.DigitalRead()
-					}
+					relay.Off()
 				}
 			}
 			mutex.Unlock()
@@ -134,6 +120,35 @@ func GetRobot(
 		lightSwitch(time.Duration(duration) * time.Second)
 	}
 
+	halloweenLight := func(divider int, loop int) {
+		go func() {
+			if remoteRelayIP != "" {
+				log.Println("Halloween child start")
+				postBody, _ := json.Marshal(map[string]int{
+					"divider": divider,
+					"loop":    loop,
+				})
+				reqBody := bytes.NewBuffer(postBody)
+				resp, err := http.Post("http://"+remoteRelayIP+":"+port+"/api/robots/pilight/commands/halloween", "application/json", reqBody)
+				if err != nil {
+					log.Println(err)
+				}
+				defer resp.Body.Close()
+				log.Println("Halloween child end")
+			}
+		}()
+
+		log.Printf("Halloween main start: %d, %d\n", divider, loop)
+		d := time.Duration(1) * time.Second / time.Duration(divider)
+		for i := 0; i < loop; i++ {
+			relay.Toggle()
+			time.Sleep(d)
+			relay.Toggle()
+			time.Sleep(d)
+		}
+		log.Println("Halloween main end")
+	}
+
 	work := func() {
 
 		if pirSensorOn {
@@ -141,11 +156,11 @@ func GetRobot(
 				log.Println(gpio.MotionDetected)
 				lightOn(delay)
 				if remoteRelayIP != "" {
-					_, err := http.Get("http://" + remoteRelayIP + ":" + port + "/api/robots/pilight/commands/light_on")
+					resp, err := http.Get("http://" + remoteRelayIP + ":" + port + "/api/robots/pilight/commands/light_on")
 					if err != nil {
 						log.Println(err)
 					}
-
+					defer resp.Body.Close()
 				}
 			})
 		}
@@ -167,6 +182,24 @@ func GetRobot(
 			}
 			lightOn(duration)
 			return fmt.Sprintf("Light On - %d", duration)
+		})
+
+	robot.AddCommand("halloween",
+		func(params map[string]interface{}) interface{} {
+			divider := halloweenDivider
+			if paramDivider, ok := params["divider"]; ok {
+				if val, ok := paramDivider.(float64); ok {
+					divider = int(val)
+				}
+			}
+			loop := halloweenLoop
+			if paramLoop, ok := params["loop"]; ok {
+				if val, ok := paramLoop.(float64); ok {
+					loop = int(val)
+				}
+			}
+			halloweenLight(divider, loop)
+			return "Halloween"
 		})
 
 	mbot := gobot.NewMaster()

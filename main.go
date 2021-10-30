@@ -52,9 +52,31 @@ func main() {
 		"Remote relay IP",
 	)
 
+	divider := flag.Int(
+		"divider",
+		15,
+		"Halloween divider period",
+	)
+
+	loop := flag.Int(
+		"loop",
+		30,
+		"Halloween loop lights on number",
+	)
+
 	flag.Parse()
 
 	// Start robot
-	robot := GetRobot(PIRPIN, RELAYPIN, *duration, *longitude, *latitude, *lightOnState, *port, *pirSensorOn, *remoteRelayIP)
+	robot := GetRobot(PIRPIN,
+		RELAYPIN,
+		*duration,
+		*longitude,
+		*latitude,
+		*lightOnState,
+		*port,
+		*pirSensorOn,
+		*remoteRelayIP,
+		*divider,
+		*loop)
 	robot.Start()
 }
