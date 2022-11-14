@@ -132,8 +132,9 @@ func GetRobot(
 				resp, err := http.Post("http://"+remoteRelayIP+":"+port+"/api/robots/pilight/commands/halloween", "application/json", reqBody)
 				if err != nil {
 					log.Println(err)
+				} else if resp != nil && resp.Body != nil {
+					defer resp.Body.Close()
 				}
-				defer resp.Body.Close()
 				log.Println("Halloween child end")
 			}
 		}()
@@ -159,8 +160,9 @@ func GetRobot(
 					resp, err := http.Get("http://" + remoteRelayIP + ":" + port + "/api/robots/pilight/commands/light_on")
 					if err != nil {
 						log.Println(err)
+					} else if resp != nil && resp.Body != nil {
+						defer resp.Body.Close()
 					}
-					defer resp.Body.Close()
 				}
 			})
 		}
